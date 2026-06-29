@@ -13,8 +13,9 @@ public class MatchManager : NetworkBehaviour
     [Header("Configuración")]
     [SerializeField] private float tiempoDePartida = 180f;
 
-    [Networked] public int PuntosP1 { get; set; }
-    [Networked] public int PuntosP2 { get; set; }
+    [Networked, Capacity(10)]
+    private NetworkDictionary<PlayerRef, int> PuntajesJugadores { get; }
+
     [Networked] private TickTimer cronometroPartida { get; set; }
     [Networked] private bool partidaFinalizada { get; set; }
 
@@ -30,8 +31,11 @@ public class MatchManager : NetworkBehaviour
 
     public override void Render()
     {
-        if (killsText != null)
-            killsText.text = $"P1: {PuntosP1} | P2: {PuntosP2}";
+        if (killsText != null && Runner.LocalPlayer != default)
+        {
+            int misKills = PuntajesJugadores.ContainsKey(Runner.LocalPlayer) ? PuntajesJugadores.Get(Runner.LocalPlayer) : 0;
+            killsText.text = $"Mis Bajas: {misKills} / 5";
+        }
 
         if (!partidaFinalizada && timerText != null && cronometroPartida.IsRunning)
         {
@@ -55,13 +59,22 @@ public class MatchManager : NetworkBehaviour
 
     public void RegisterKill(PlayerRef shooter)
     {
-        if (Object.HasStateAuthority && !partidaFinalizada)
-        {
-            if (shooter.PlayerId == 1) PuntosP1++;
-            else PuntosP2++;
+        if (!Object.HasStateAuthority || partidaFinalizada) return;
 
-            if (PuntosP1 >= 5) FinalizarPartida("JUGADOR 1");
-            else if (PuntosP2 >= 5) FinalizarPartida("JUGADOR 2");
+        int nuevosPuntos = 1;
+        if (PuntajesJugadores.ContainsKey(shooter))
+        {
+            nuevosPuntos = PuntajesJugadores.Get(shooter) + 1;
+            PuntajesJugadores.Set(shooter, nuevosPuntos);
+        }
+        else
+        {
+            PuntajesJugadores.Set(shooter, nuevosPuntos);
+        }
+
+        if (nuevosPuntos >= 5)
+        {
+            FinalizarPartida($"JUGADOR {shooter.PlayerId}");
         }
     }
 
@@ -99,8 +112,7 @@ public class MatchManager : NetworkBehaviour
 
         if (Runner.IsServer)
         {
-            PuntosP1 = 0;
-            PuntosP2 = 0;
+            PuntajesJugadores.Clear();
             partidaFinalizada = false;
             cronometroPartida = TickTimer.CreateFromSeconds(Runner, tiempoDePartida);
         }
@@ -108,8 +120,31 @@ public class MatchManager : NetworkBehaviour
 
     private void DeterminarGanadorPorTiempo()
     {
-        if (PuntosP1 > PuntosP2) FinalizarPartida("JUGADOR 1");
-        else if (PuntosP2 > PuntosP1) FinalizarPartida("JUGADOR 2");
-        else FinalizarPartida("EMPATE");
+        PlayerRef mejorJugador = default;
+        int maxKills = -1;
+        bool empate = false;
+
+        foreach (var kvp in PuntajesJugadores)
+        {
+            if (kvp.Value > maxKills)
+            {
+                maxKills = kvp.Value;
+                mejorJugador = kvp.Key;
+                empate = false;
+            }
+            else if (kvp.Value == maxKills)
+            {
+                empate = true;
+            }
+        }
+
+        if (maxKills <= 0 || empate)
+        {
+            FinalizarPartida("EMPATE");
+        }
+        else
+        {
+            FinalizarPartida($"JUGADOR {mejorJugador.PlayerId}");
+        }
     }
 }

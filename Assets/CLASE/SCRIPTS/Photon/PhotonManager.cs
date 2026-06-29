@@ -12,9 +12,22 @@ public class PhotonManager : MonoBehaviour, INetworkRunnerCallbacks
     [SerializeField] private NetworkPrefabRef playerPrefab;
     [SerializeField] private GameObject menuCanvas;
 
+    [SerializeField] private int randomServerNameMaxLenght = 6;
+
+    public static PhotonManager Instance;
+    private System.Action<List<SessionInfo>> _onSessionListUpdatedCallback;
+
     private void Awake()
     {
+        if (Instance != null) Destroy(this);
+        else Instance = this;
+
         SetupRunner();
+    }
+
+    private void Start()
+    {
+        ConnectToPhotonLobby();
     }
 
     private void SetupRunner()
@@ -28,31 +41,75 @@ public class PhotonManager : MonoBehaviour, INetworkRunnerCallbacks
         _runner.AddCallbacks(this);
     }
 
-    public void CreateGame() => _ = StartGame(GameMode.Host);
-    public void TryJoinGame() => _ = StartGame(GameMode.Client);
 
-    private async Task StartGame(GameMode mode)
+    public async Task StartCustomGame(string serverName, int playerCount)
+    {
+        if (_runner == null) SetupRunner();
+
+        if (_runner.SessionInfo == null && !_runner.IsRunning)
+        {
+            await _runner.JoinSessionLobby(SessionLobby.ClientServer);
+            await Task.Delay(1000);
+        }
+
+        if (menuCanvas != null) menuCanvas.SetActive(false);
+
+        var sceneManager = GetComponent<NetworkSceneManagerDefault>();
+        if (sceneManager == null) sceneManager = gameObject.AddComponent<NetworkSceneManagerDefault>();
+
+        await _runner.StartGame(new StartGameArgs
+        {
+            GameMode = GameMode.Host,
+            SessionName = serverName,
+            PlayerCount = playerCount,
+            SceneManager = sceneManager,
+            Scene = SceneRef.FromIndex(1),
+            IsVisible = true
+        });
+    }
+
+    public async void ConnectToPhotonLobby()
+    {
+        if (_runner == null) SetupRunner();
+        if (_runner.IsRunning) return;
+        await _runner.JoinSessionLobby(SessionLobby.ClientServer);
+    }
+
+    public void InitializeSessionCallback(System.Action<List<SessionInfo>> callback)
+    {
+        _onSessionListUpdatedCallback = callback;
+    }
+
+    public void StartRandomGameButton()
+    {
+        _ = StartRandomGame();
+    }
+
+    private async Task StartRandomGame()
     {
         try
         {
-            if (_runner == null)
-                SetupRunner();
+            if (_runner == null) SetupRunner();
 
-            if (_runner.IsRunning)
-                return;
+            if (_runner.SessionInfo == null && !_runner.IsRunning)
+            {
+                await _runner.JoinSessionLobby(SessionLobby.ClientServer);
+                await Task.Delay(1000);
+            }
 
-            if (menuCanvas != null)
-                menuCanvas.SetActive(false);
+            if (menuCanvas != null) menuCanvas.SetActive(false);
 
             var sceneManager = GetComponent<NetworkSceneManagerDefault>();
+            if (sceneManager == null) sceneManager = gameObject.AddComponent<NetworkSceneManagerDefault>();
 
-            if (sceneManager == null)
-                sceneManager = gameObject.AddComponent<NetworkSceneManagerDefault>();
+            string nombreRandom = RandomServerName();
+            Debug.Log("Nombre generado: " + nombreRandom);
 
             await _runner.StartGame(new StartGameArgs
             {
-                GameMode = mode,
-                SessionName = "DeathmatchPartida",
+                GameMode = GameMode.Host,
+                SessionName = nombreRandom,
+                CustomLobbyName = "CUSTOM LOBBY #" + nombreRandom,
                 SceneManager = sceneManager,
                 Scene = SceneRef.FromIndex(1),
             });
@@ -61,6 +118,59 @@ public class PhotonManager : MonoBehaviour, INetworkRunnerCallbacks
         {
             Debug.LogError(e.Message);
         }
+    }
+
+    public string RandomServerName()
+    {
+        string characters = "ABCDEFGHIJKLMNÑOPQRSTUVWXYZabcdefghijklmnñopqrstuvwxyz0123456789";
+        string resultado = "";
+        if (randomServerNameMaxLenght < 4) randomServerNameMaxLenght = 4;
+        for (int i = 0; i < randomServerNameMaxLenght; i++)
+        {
+            int indiceAlAzar = UnityEngine.Random.Range(0, characters.Length);
+            resultado += characters[indiceAlAzar];
+        }
+        return resultado;
+    }
+
+    public void CreateGameReal(string roomName, int maxPlayers, bool esPrivada) => _ = StartGameReal(GameMode.Host, roomName, maxPlayers, esPrivada);
+
+    public void JoinGameReal(string roomName)
+    {
+        _ = StartGameReal(GameMode.Client, roomName, 8, false);
+    }
+
+    private async Task StartGameReal(GameMode mode, string roomName, int maxPlayers, bool esPrivada)
+    {
+        try
+        {
+            if (_runner.IsRunning) await _runner.Shutdown();
+            SetupRunner();
+
+            if (menuCanvas != null) menuCanvas.SetActive(false);
+
+            var sceneManager = GetComponent<NetworkSceneManagerDefault>();
+            if (sceneManager == null) sceneManager = gameObject.AddComponent<NetworkSceneManagerDefault>();
+
+            await _runner.StartGame(new StartGameArgs
+            {
+                GameMode = mode,
+                SessionName = roomName,
+                PlayerCount = maxPlayers,
+                SceneManager = sceneManager,
+                Scene = SceneRef.FromIndex(1),
+                IsVisible = !esPrivada
+            });
+        }
+        catch (Exception e)
+        {
+            Debug.LogError(e.Message);
+        }
+    }
+
+    public void OnSessionListUpdated(NetworkRunner runner, List<SessionInfo> sessionList)
+    {
+        _onSessionListUpdatedCallback?.Invoke(sessionList);
     }
 
     public void OnInput(NetworkRunner runner, NetworkInput input)
@@ -103,17 +213,8 @@ public class PhotonManager : MonoBehaviour, INetworkRunnerCallbacks
         runner.Spawn(playerPrefab, pos, Quaternion.identity, player);
     }
 
-    public void OnDisconnectedFromServer(NetworkRunner runner, NetDisconnectReason reason)
-    {
-        Debug.Log("Disconnected");
-    }
-
-    public void OnConnectFailed(NetworkRunner runner, NetAddress remoteAddress, NetConnectFailedReason reason)
-    {
-        Debug.Log("Connection failed");
-    }
-
-    public void OnSessionListUpdated(NetworkRunner runner, List<SessionInfo> sessionList) { }
+    public void OnDisconnectedFromServer(NetworkRunner runner, NetDisconnectReason reason) { }
+    public void OnConnectFailed(NetworkRunner runner, NetAddress remoteAddress, NetConnectFailedReason reason) { }
     public void OnShutdown(NetworkRunner runner, ShutdownReason shutdownReason) { }
     public void OnPlayerLeft(NetworkRunner runner, PlayerRef player) { }
     public void OnConnectedToServer(NetworkRunner runner) { }

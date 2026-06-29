@@ -19,10 +19,10 @@ namespace PlayFab
 
         /// <summary> The name of a customer vertical. This is only for customers running a private cluster.  Generally you shouldn't touch this </summary>
         internal virtual string VerticalName { get; set; }
-
+#if ENABLE_PLAYFABSERVER_API || ENABLE_PLAYFABADMIN_API || UNITY_EDITOR || ENABLE_PLAYFAB_SECRETKEY
         /// <summary> You must set this value for PlayFabSdk to work properly (Found in the Game Manager for your title, at the PlayFab Website) </summary>
         public virtual string DeveloperSecretKey { get; set; }
-
+#endif
         /// <summary> Set this to true to prevent hardware information from leaving the device </summary>
         public virtual bool DisableDeviceInfo { get; set; }
         /// <summary> Set this to true to prevent focus change information from leaving the device </summary>

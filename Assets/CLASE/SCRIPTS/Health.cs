@@ -14,11 +14,7 @@ public class Health : NetworkBehaviour
     [SerializeField] private Image healthBar;
 
     private SimpleKCC _kcc;
-
-    
     private Transform[] _puntosDeMuerte;
-    private Transform _lobbyP1;
-    private Transform _lobbyP2;
 
     public override void Spawned()
     {
@@ -28,25 +24,28 @@ public class Health : NetworkBehaviour
         {
             NetworkedHealth = maxHealth;
 
-            _lobbyP1 = GameObject.Find("LobbyP1")?.transform;
-            _lobbyP2 = GameObject.Find("LobbyP2")?.transform;
-
             GameObject contenedor = GameObject.Find("ContenedorSpawns");
-            if (contenedor != null) _puntosDeMuerte = contenedor.GetComponentsInChildren<Transform>();
+            if (contenedor != null)
+            {
+                _puntosDeMuerte = contenedor.GetComponentsInChildren<Transform>();
+            }
 
             MoverALobbyInicial();
-
-            
             GetComponent<SonidosPro>().RPC_SpawnSonido();
         }
     }
 
     private void MoverALobbyInicial()
     {
-        if (Object.InputAuthority.PlayerId == 1 && _lobbyP1 != null)
-            _kcc.SetPosition(_lobbyP1.position);
-        else if (_lobbyP2 != null)
-            _kcc.SetPosition(_lobbyP2.position);
+        if (_puntosDeMuerte != null && _puntosDeMuerte.Length > 1)
+        {
+            int index = Random.Range(1, _puntosDeMuerte.Length);
+            _kcc.SetPosition(_puntosDeMuerte[index].position);
+        }
+        else
+        {
+            _kcc.SetPosition(new Vector3(0, 2, 0));
+        }
     }
 
     void OnHealthChanged()
@@ -61,7 +60,6 @@ public class Health : NetworkBehaviour
 
         NeedsRespawn = false;
 
-       
         if (_puntosDeMuerte != null && _puntosDeMuerte.Length > 1)
         {
             int index = Random.Range(1, _puntosDeMuerte.Length);
@@ -73,8 +71,6 @@ public class Health : NetworkBehaviour
         }
 
         NetworkedHealth = maxHealth;
-
-       
         GetComponent<SonidosPro>().RPC_SpawnSonido();
     }
 
@@ -83,17 +79,20 @@ public class Health : NetworkBehaviour
     {
         if (NetworkedHealth <= 0) return;
 
-        NetworkedHealth = (byte)Mathf.Max(0, NetworkedHealth - damage);
-
-        if (NetworkedHealth <= 0)
+        if (damage >= NetworkedHealth)
         {
+            NetworkedHealth = 0;
+            NeedsRespawn = true;
+
             MatchManager matchManager = FindFirstObjectByType<MatchManager>();
             if (matchManager != null)
             {
                 matchManager.RegisterKill(shooter);
             }
-
-            NeedsRespawn = true;
+        }
+        else
+        {
+            NetworkedHealth -= damage;
         }
     }
 }
